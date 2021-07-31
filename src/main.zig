@@ -1,22 +1,14 @@
 const std = @import("std");
 const fs = std.fs;
 const print = std.debug.print;
+const m = std.math;
 
-pub fn Point3(comptime T: type) type {
+pub fn Vec3(comptime T: type) type {
     return struct {
         const Self = @This();
         x: T,
         y: T,
         z: T,
-
-        // Shortcut constructor
-        pub fn v(x: T, y: T, z: T) Self {
-            return Point3(T){
-                .x = x,
-                .y = y,
-                .z = z,
-            };
-        }
 
         pub fn add(left: *const Self, right: *const Self) Self {
             return Point3(T){
@@ -34,6 +26,14 @@ pub fn Point3(comptime T: type) type {
             };
         }
 
+        pub fn div(vec: *const Self, scale: T) Vec3(T) {
+            return Vec3(T){
+                .x = vec.x / scale,
+                .y = vec.y / scale,
+                .z = vec.z / scale,
+            };
+        }
+
         pub fn mul(vec: *const Self, scale: T) Vec3(T) {
             return Vec3(T){
                 .x = vec.x * scale,
@@ -42,18 +42,23 @@ pub fn Point3(comptime T: type) type {
             };
         }
 
+        pub fn dot(u: *const Self, v: *const Self) T {
+            return u.x * v.x +
+                u.y * v.y +
+                u.z * v.z;
+        }
+
         pub fn length(vec: *const Self) T {
-            const m = std.math;
             return m.sqrt(m.pow(T, vec.x, 2) + m.pow(T, vec.y, 2) + m.pow(T, vec.z, 2));
         }
 
         pub fn unit(vec: *const Self) Self {
-            return vec.mul(-vec.length());
+            return vec.div(vec.length());
         }
     };
 }
 
-const Vec3 = Point3;
+const Point3 = Vec3;
 const Colour = Point3(f32);
 
 const Sphere = struct {
@@ -64,20 +69,49 @@ const Ray = struct {
     origin: Point3(f32),
     direction: Vec3(f32),
 
-    pub fn at(self: Ray, t: f64) Point3(f32) {
+    pub fn at(ray: Ray, t: f32) Point3(f32) {
         // P(t)=A+tb
-        return self.origin.add(self.direction.mul(t));
+        return ray.origin.add(&ray.direction.mul(t));
     }
 
-    pub fn colour(self: Ray) Colour {
-        const unit_dir = self.direction.unit();
-        const t = 0.5 * (unit_dir.y + 1.0);
+    pub fn colourLerp(ray: Ray) Colour {
+        const unit_dir = ray.direction.unit();
+        const t = 0.5 * (unit_dir.x + 1.0);
 
         const end = Colour{ .x = 0.5, .y = 0.7, .z = 1.0 };
         const start = Colour{ .x = 0, .y = 0, .z = 1 };
 
-        //return Colour{ .x = 1, .y = 0, .z = 1 };
         return start.mul(1.0 - t).add(&end.mul(t));
+    }
+
+    pub fn hitSphere(ray: Ray, radius: f32, center: Point3(f32)) f32 {
+        // t2b⋅b+2tb⋅(A−C)+(A−C)⋅(A−C)−r2=0
+        const oc = ray.origin.sub(&center);
+        const r2 = radius * radius;
+        const a = ray.direction.dot(&ray.direction);
+        const b = 2.0 * oc.dot(&ray.direction);
+        const c = oc.dot(&oc) - r2;
+        const discriminant = b * b - 4 * a * c;
+
+        if (discriminant < 0.0) {
+            return -1.0;
+        } else {
+            return (-b - m.sqrt(discriminant)) / (2.0 * a);
+        }
+    }
+
+    pub fn colourSphere(r: Ray) Colour {
+        const center = Point3(f32){ .x = 0, .y = 0, .z = -1 };
+        const t = r.hitSphere(0.5, center);
+        if (t > 0.0) {
+            // unit length normal
+            const N = r.at(t).sub(&center).unit();
+
+            // map RGB to normal XYZ in interval 0-1
+            const col = Colour{ .x = N.x + 1, .y = N.y + 1, .z = N.z + 1 };
+            return col.mul(0.5);
+        }
+        return r.colourLerp();
     }
 };
 
@@ -147,7 +181,7 @@ pub fn main() anyerror!void {
 
     const hor_2 = horizontal.mul(0.5);
     const ver_2 = vertical.mul(0.5);
-    const lower_left_corner = origin.sub(&hor_2).sub(&ver_2).sub(&Vec3(f32).v(0, 0, focal_length));
+    const lower_left_corner = origin.sub(&hor_2).sub(&ver_2).sub(&Vec3(f32){ .x = 0, .y = 0, .z = focal_length });
 
     try stdout.print("P3\n{} {}\n255\n", .{ image_width, image_height });
 
@@ -162,7 +196,7 @@ pub fn main() anyerror!void {
             //print("({},{}) ", .{ i, j });
             const target = lower_left_corner.add(&vertical.mul(v)).add(&horizontal.mul(u)).sub(&origin);
             const ray = Ray{ .origin = origin, .direction = target };
-            const pixel_colour = ray.colour();
+            const pixel_colour = ray.colourSphere();
             try write_colour(stdout_file, pixel_colour);
         }
     }
