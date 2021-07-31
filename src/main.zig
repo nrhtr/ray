@@ -115,48 +115,6 @@ const Ray = struct {
     }
 };
 
-const Mesh = struct {
-    vertices: std.ArrayList(Point3(f32)),
-    indices: [*]usize,
-
-    pub fn load(filename: []const u8) !Mesh {
-        var verts: std.ArrayList(Point3((f32))) = undefined;
-        var indices: [*]usize = undefined;
-
-        const f = try fs.cwd().openFile(filename, fs.File.OpenFlags{ .read = true });
-        defer f.close();
-
-        const io = std.io;
-        var buf_reader = io.bufferedReader(f.reader());
-        var in_stream = buf_reader.reader();
-        var buffer: [1024]u8 = undefined;
-
-        // Read
-        while (try in_stream.readUntilDelimiterOrEof(buffer[0..], '\n')) |line| {
-            switch (line[0]) {
-                // Vertex
-                'v' => {
-                    var lptr = line[1..];
-                    var split = std.mem.split(line, " ");
-                    while (split.next()) |part| {
-                        print("part: {}\n", .{part});
-                    }
-                    //const x = std.fmt.parseFloat(f32, line);
-                    //print("Vertex: {}\n", .{line});
-                },
-                // Face
-                'f' => {},
-                else => {},
-            }
-        }
-
-        return Mesh{
-            .vertices = undefined,
-            .indices = undefined,
-        };
-    }
-};
-
 pub fn write_colour(f: std.fs.File, c: Colour) !void {
     const w = f.writer();
     try w.print("{} {} {}\n", .{ @floatToInt(i32, 255.999 * c.x), @floatToInt(i32, 255.999 * c.y), @floatToInt(i32, 255.999 * c.z) });
